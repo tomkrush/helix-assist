@@ -27,7 +27,8 @@ func NewBufferStore() *BufferStore {
 func (s *BufferStore) Set(buf *Buffer) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.buffers[buf.URI] = buf
+	snapshot := *buf
+	s.buffers[buf.URI] = &snapshot
 	s.currentURI = buf.URI
 }
 
@@ -35,7 +36,11 @@ func (s *BufferStore) Get(uri string) (*Buffer, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	buf, ok := s.buffers[uri]
-	return buf, ok
+	if !ok {
+		return nil, false
+	}
+	snapshot := *buf
+	return &snapshot, true
 }
 
 func (s *BufferStore) GetCurrent() (*Buffer, bool) {
@@ -45,7 +50,11 @@ func (s *BufferStore) GetCurrent() (*Buffer, bool) {
 		return nil, false
 	}
 	buf, ok := s.buffers[s.currentURI]
-	return buf, ok
+	if !ok {
+		return nil, false
+	}
+	snapshot := *buf
+	return &snapshot, true
 }
 
 func (s *BufferStore) CurrentURI() string {
