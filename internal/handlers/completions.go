@@ -3,7 +3,9 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/leona/helix-assist/internal/config"
@@ -13,9 +15,17 @@ import (
 )
 
 type CompletionHandler struct {
-	cfg       *config.Config
-	registry  *providers.Registry
-	debouncer *util.Debouncer
+	cfg        *config.Config
+	registry   *providers.Registry
+	debouncer  *util.Debouncer
+	mu         sync.Mutex
+	generation uint64
+	active     *activeCompletion
+}
+
+type activeCompletion struct {
+	generation uint64
+	cancel     context.CancelFunc
 }
 
 func NewCompletionHandler(cfg *config.Config, registry *providers.Registry) *CompletionHandler {
@@ -40,16 +50,61 @@ func (h *CompletionHandler) Register(svc *lsp.Service) {
 			return
 		}
 
+		generation := h.beginCompletion()
 		lastContentVersion := buffer.Version
-		content := util.GetContent(buffer.Text, params.Position.Line, params.Position.Character)
 
-		h.debouncer.Debounce("completion", func() {
-			h.doCompletion(svc, msg, params, lastContentVersion, content)
-		}, time.Duration(h.cfg.Debounce)*time.Millisecond)
+		h.debouncer.Debounce(
+			"completion",
+			func() {
+				h.doCompletion(svc, msg, params, lastContentVersion, generation)
+			},
+			func() {
+				h.sendEmptyCompletion(svc, msg.ID)
+			},
+			time.Duration(h.cfg.Debounce)*time.Millisecond,
+		)
 	})
 }
 
-func (h *CompletionHandler) doCompletion(svc *lsp.Service, msg *lsp.JSONRPCMessage, params lsp.CompletionParams, lastContentVersion int, content util.ContentParts) {
+func (h *CompletionHandler) beginCompletion() uint64 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.generation++
+	if h.active != nil {
+		h.active.cancel()
+		h.active = nil
+	}
+	return h.generation
+}
+
+func (h *CompletionHandler) setActive(generation uint64, cancel context.CancelFunc) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if generation != h.generation {
+		return false
+	}
+	h.active = &activeCompletion{generation: generation, cancel: cancel}
+	return true
+}
+
+func (h *CompletionHandler) clearActive(generation uint64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.active != nil && h.active.generation == generation {
+		h.active = nil
+	}
+}
+
+func (h *CompletionHandler) isCurrent(generation uint64) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return generation == h.generation
+}
+
+func (h *CompletionHandler) doCompletion(svc *lsp.Service, msg *lsp.JSONRPCMessage, params lsp.CompletionParams, lastContentVersion int, generation uint64) {
 	defer func() {
 		if r := recover(); r != nil {
 			svc.Logger.Log("completion panic:", r)
@@ -69,7 +124,7 @@ func (h *CompletionHandler) doCompletion(svc *lsp.Service, msg *lsp.JSONRPCMessa
 		return
 	}
 
-	content = util.GetContent(buffer.Text, params.Position.Line, params.Position.Character)
+	content := util.GetContent(buffer.Text, params.Position.Line, params.Position.Character)
 	svc.Logger.Log("calling completion", "language:", buffer.LanguageID)
 
 	var progress *util.ProgressIndicator
@@ -81,7 +136,13 @@ func (h *CompletionHandler) doCompletion(svc *lsp.Service, msg *lsp.JSONRPCMessa
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(h.cfg.CompletionTimeout)*time.Millisecond)
+	if !h.setActive(generation, cancel) {
+		cancel()
+		h.sendEmptyCompletion(svc, msg.ID)
+		return
+	}
 	defer cancel()
+	defer h.clearActive(generation)
 	contentAfter := content.ContentImmediatelyAfter
 
 	if content.ContentAfter != "" {
@@ -98,6 +159,10 @@ func (h *CompletionHandler) doCompletion(svc *lsp.Service, msg *lsp.JSONRPCMessa
 	}, params.TextDocument.URI, buffer.LanguageID, h.cfg.NumSuggestions)
 
 	if err != nil {
+		if errors.Is(err, context.Canceled) || !h.isCurrent(generation) {
+			h.sendEmptyCompletion(svc, msg.ID)
+			return
+		}
 		svc.Logger.Log("completion error:", err.Error())
 		svc.SendDiagnostics([]lsp.Diagnostic{
 			{
@@ -109,6 +174,14 @@ func (h *CompletionHandler) doCompletion(svc *lsp.Service, msg *lsp.JSONRPCMessa
 				},
 			},
 		}, 0)
+		h.sendEmptyCompletion(svc, msg.ID)
+		return
+	}
+
+	buffer, ok = svc.Buffers.Get(params.TextDocument.URI)
+	if !ok || buffer.Version != lastContentVersion || !h.isCurrent(generation) {
+		svc.Logger.Log("discarding stale completion result")
+		h.sendEmptyCompletion(svc, msg.ID)
 		return
 	}
 

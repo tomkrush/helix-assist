@@ -7,39 +7,58 @@ import (
 
 type Debouncer struct {
 	mu     sync.Mutex
-	timers map[string]*time.Timer
+	timers map[string]*debounceEntry
+}
+
+type debounceEntry struct {
+	timer    *time.Timer
+	onCancel func()
 }
 
 func NewDebouncer() *Debouncer {
 	return &Debouncer{
-		timers: make(map[string]*time.Timer),
+		timers: make(map[string]*debounceEntry),
 	}
 }
 
-func (d *Debouncer) Debounce(key string, fn func(), delay time.Duration) {
+func (d *Debouncer) Debounce(key string, fn, onCancel func(), delay time.Duration) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
+	var canceled func()
 
-	// Cancel existing timer for this key
-	if timer, exists := d.timers[key]; exists {
-		timer.Stop()
+	if entry, exists := d.timers[key]; exists && entry.timer.Stop() {
+		canceled = entry.onCancel
 	}
 
-	// Create new timer
-	d.timers[key] = time.AfterFunc(delay, func() {
+	entry := &debounceEntry{onCancel: onCancel}
+	entry.timer = time.AfterFunc(delay, func() {
 		d.mu.Lock()
-		delete(d.timers, key)
+		if d.timers[key] == entry {
+			delete(d.timers, key)
+		}
 		d.mu.Unlock()
 		fn()
 	})
+	d.timers[key] = entry
+	d.mu.Unlock()
+
+	if canceled != nil {
+		canceled()
+	}
 }
 
 func (d *Debouncer) Cancel(key string) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
+	var canceled func()
 
-	if timer, exists := d.timers[key]; exists {
-		timer.Stop()
+	if entry, exists := d.timers[key]; exists {
+		if entry.timer.Stop() {
+			canceled = entry.onCancel
+		}
 		delete(d.timers, key)
+	}
+	d.mu.Unlock()
+
+	if canceled != nil {
+		canceled()
 	}
 }
