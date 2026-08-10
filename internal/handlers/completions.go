@@ -78,8 +78,6 @@ func (h *CompletionHandler) doCompletion(svc *lsp.Service, msg *lsp.JSONRPCMessa
 		progress = util.NewProgressIndicator(svc, h.cfg)
 		progress.Start()
 		defer progress.Stop()
-	} else {
-		svc.SendShowMessage(lsp.MessageTypeInfo, "Fetching completion...")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(h.cfg.CompletionTimeout)*time.Millisecond)
