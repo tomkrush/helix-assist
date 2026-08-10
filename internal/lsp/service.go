@@ -195,15 +195,26 @@ func (s *Service) emit(method string, msg *JSONRPCMessage) {
 	s.mu.RUnlock()
 
 	for _, handler := range handlers {
+		// Document lifecycle notifications must be applied in wire order before
+		// a following request reads the buffer. Completion and action requests
+		// remain asynchronous so the read loop can continue receiving changes.
+		if method == EventDidOpen || method == EventDidChange {
+			s.callHandler(method, handler, msg)
+			continue
+		}
 		go func(h EventHandler) {
-			defer func() {
-				if r := recover(); r != nil {
-					s.Logger.Log("handler panic:", method, r)
-				}
-			}()
-			h(s, msg)
+			s.callHandler(method, h, msg)
 		}(handler)
 	}
+}
+
+func (s *Service) callHandler(method string, handler EventHandler, msg *JSONRPCMessage) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.Logger.Log("handler panic:", method, r)
+		}
+	}()
+	handler(s, msg)
 }
 
 func (s *Service) Send(msg *JSONRPCMessage) {
