@@ -8,10 +8,13 @@ func BuildCompletionSystemPrompt(languageID string) string {
 Rules:
 - Output ONLY the code that should be inserted at the cursor position
 - Do NOT include any code that already exists before or after the cursor
-- Do NOT add explanations, comments, or markdown formatting
+- Do NOT add explanations or markdown formatting
 - Do NOT repeat existing code
-- Do NOT include comments
+- Do NOT introduce a new comment unless the cursor is already inside a comment
 - Generate syntactically correct %s code that fits seamlessly between the before and after content
+- The cursor may be inside a string literal or comment. In that case, continue its natural-language content rather than generating a new code construct
+- For a string or comment continuation, output only the concise text to insert; do not repeat the opening quote or comment marker
+- Preserve any leading space needed by a string, comment, or prose continuation (for example, after the word hello, return a leading space followed by world)
 
 Context awareness:
 - CAREFULLY examine the code after the cursor - it shows what already exists
@@ -21,7 +24,8 @@ Context awareness:
 - Only add closing delimiters if they are NOT already present in the code after cursor
 
 Completion style:
-- Prefer multi-line completions that form complete, meaningful additions
+- Prefer a short phrase inside strings and comments
+- In code context, use multi-line completions only when they form a complete, meaningful addition
 - Provide meaningful placeholder values or expressions where appropriate
 - When completing control structures that are NOT yet closed in the after-cursor code, provide complete blocks with braces`, languageID, languageID)
 }

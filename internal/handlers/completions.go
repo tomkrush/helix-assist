@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf16"
 
 	"github.com/leona/helix-assist/internal/config"
 	"github.com/leona/helix-assist/internal/lsp"
@@ -226,72 +228,140 @@ func findOverlapSuffix(hint, suffix string) int {
 	return 0
 }
 
+func utf16Length(text string) int {
+	return len(utf16.Encode([]rune(text)))
+}
+
+func completionWordPrefix(line string) string {
+	runes := []rune(line)
+	start := len(runes)
+	for start > 0 {
+		r := runes[start-1]
+		if !unicode.IsLetter(r) && !unicode.IsNumber(r) && r != '_' && r != '$' && r != '-' {
+			break
+		}
+		start--
+	}
+	return string(runes[start:])
+}
+
+func inProseContext(contentBefore string) bool {
+	line := contentBefore
+	if newline := strings.LastIndexByte(line, '\n'); newline >= 0 {
+		line = line[newline+1:]
+	}
+
+	for _, marker := range []string{"//", "#", "<!--"} {
+		if strings.Contains(line, marker) {
+			return true
+		}
+	}
+
+	if strings.LastIndex(contentBefore, "/*") > strings.LastIndex(contentBefore, "*/") ||
+		strings.LastIndex(contentBefore, "<!--") > strings.LastIndex(contentBefore, "-->") {
+		return true
+	}
+
+	for _, quote := range []rune{'"', '\'', '`'} {
+		open := false
+		escaped := false
+		for _, r := range line {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if r == '\\' && quote != '`' {
+				escaped = true
+				continue
+			}
+			if r == quote {
+				open = !open
+			}
+		}
+		if open {
+			return true
+		}
+	}
+
+	return false
+}
+
+func addMissingProseSpace(hint string, content util.ContentParts) string {
+	if hint == "" || content.ContentBefore == "" || !inProseContext(content.ContentBefore) {
+		return hint
+	}
+
+	beforeRunes := []rune(content.ContentBefore)
+	hintRunes := []rune(hint)
+	left := beforeRunes[len(beforeRunes)-1]
+	right := hintRunes[0]
+	if (unicode.IsLetter(left) || unicode.IsNumber(left)) && (unicode.IsLetter(right) || unicode.IsNumber(right)) {
+		return " " + hint
+	}
+	return hint
+}
+
 func (h *CompletionHandler) buildCompletionItem(hint string, content util.ContentParts, position lsp.Position) lsp.CompletionItem {
-	hint = strings.TrimSpace(hint)
+	// Remove response framing newlines without removing meaningful horizontal
+	// whitespace. A leading space is often the entire point of a prose/string
+	// continuation (for example, `"hello<CURSOR>"` -> ` world`).
+	hint = strings.Trim(hint, "\r\n")
 
 	lastLineTrimmed := strings.TrimSpace(content.LastLine)
 
 	if strings.HasPrefix(hint, lastLineTrimmed) {
-		hint = strings.TrimSpace(hint[len(lastLineTrimmed):])
+		hint = hint[len(lastLineTrimmed):]
 	}
+	hint = addMissingProseSpace(hint, content)
 
 	lines := strings.Split(hint, "\n")
-	cleanLine := position.Line + len(lines) - 1
-	cleanCharacter := len(lines[len(lines)-1])
-
-	if cleanLine == position.Line {
-		cleanCharacter += position.Character
-	}
 
 	label := lines[0]
-
-	if len(label) > 20 {
-	} else if len(hint) > 20 {
-		label = strings.TrimSpace(hint[:20])
+	prefix := completionWordPrefix(content.LastLine)
+	if prefix != "" && !strings.HasPrefix(label, prefix) {
+		label = prefix + label
 	}
 
-	overlapLen := findOverlapSuffix(hint, content.ContentImmediatelyAfter)
+	overlapBytes := findOverlapSuffix(hint, content.ContentImmediatelyAfter)
 
-	var additionalEdits []lsp.TextEdit
+	replaceLen := utf16Length(content.ContentImmediatelyAfter[:overlapBytes])
 
-	if overlapLen > 0 {
-		additionalEdits = append(additionalEdits, lsp.TextEdit{
-			Range: lsp.Range{
-				Start: lsp.Position{Line: cleanLine, Character: cleanCharacter},
-				End:   lsp.Position{Line: cleanLine, Character: cleanCharacter + overlapLen},
-			},
-			NewText: "",
-		})
-	} else if content.ContentImmediatelyAfter != "" {
+	if overlapBytes == 0 && content.ContentImmediatelyAfter != "" {
 		firstChar := content.ContentImmediatelyAfter[0]
 
 		if firstChar == ')' || firstChar == '}' || firstChar == ']' || firstChar == '>' {
 			restOfLine := content.ContentImmediatelyAfter[1:]
 			isIsolated := len(content.ContentImmediatelyAfter) == 1 ||
-				len(strings.TrimLeft(restOfLine, " \t")) == 0 ||
-				restOfLine[0] == '\n' || restOfLine[0] == '\r'
+				len(strings.TrimLeft(restOfLine, " \t")) == 0
 
 			if isIsolated {
-				additionalEdits = append(additionalEdits, lsp.TextEdit{
-					Range: lsp.Range{
-						Start: lsp.Position{Line: cleanLine, Character: cleanCharacter},
-						End:   lsp.Position{Line: cleanLine, Character: cleanCharacter + 1},
-					},
-					NewText: "",
-				})
+				replaceLen = 1
 			}
 		}
 	}
 
+	// Helix's default handling for insertText replaces the word under the
+	// cursor. The provider returns only text to add, so use an explicit edit
+	// beginning at the cursor. It may consume an already-present delimiter,
+	// but it never consumes the typed prefix before the cursor.
+	textEdit := &lsp.TextEdit{
+		Range: lsp.Range{
+			Start: position,
+			End: lsp.Position{
+				Line:      position.Line,
+				Character: position.Character + replaceLen,
+			},
+		},
+		NewText: hint,
+	}
+
 	return lsp.CompletionItem{
-		Label:               label,
-		Kind:                1,
-		Preselect:           true,
-		Detail:              hint,
-		InsertText:          hint,
-		InsertTextFormat:    1,
-		SortText:            "00000",
-		AdditionalTextEdits: additionalEdits,
+		Label:     label,
+		Kind:      1,
+		Preselect: true,
+		Detail:    hint,
+		TextEdit:  textEdit,
+		SortText:  "00000",
 	}
 }
 
