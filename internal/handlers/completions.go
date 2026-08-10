@@ -43,12 +43,6 @@ func (h *CompletionHandler) Register(svc *lsp.Service) {
 		lastContentVersion := buffer.Version
 		content := util.GetContent(buffer.Text, params.Position.Line, params.Position.Character)
 
-		// Skip if last character is a dot (likely method/property access)
-		if content.LastCharacter == "." {
-			h.sendEmptyCompletion(svc, msg.ID)
-			return
-		}
-
 		h.debouncer.Debounce("completion", func() {
 			h.doCompletion(svc, msg, params, lastContentVersion, content)
 		}, time.Duration(h.cfg.Debounce)*time.Millisecond)

@@ -42,7 +42,7 @@ func DefaultConfig() *Config {
 		AnthropicModelForChat:  "claude-sonnet-4-5",
 		AnthropicEndpoint:      "https://api.anthropic.com",
 		Debounce:               200,
-		TriggerCharacters:      []string{"{", "(", " "},
+		TriggerCharacters:      []string{"{", "(", " ", "."},
 		NumSuggestions:         1,
 		FetchTimeout:           15000,
 		ActionTimeout:          15000,
@@ -69,7 +69,7 @@ func Load() *Config {
 	openaiModelForChat := flag.String("openai-model-for-chat", getEnvOrDefault("OPENAI_MODEL_FOR_CHAT", cfg.OpenAIModelForChat), "OpenAI model for chat actions (defaults to openai-model)")
 	anthropicModelForChat := flag.String("anthropic-model-for-chat", getEnvOrDefault("ANTHROPIC_MODEL_FOR_CHAT", cfg.AnthropicModelForChat), "Anthropic model for chat actions (defaults to anthropic-model)")
 	debounce := flag.Int("debounce", getEnvOrDefaultInt("DEBOUNCE", cfg.Debounce), "Debounce delay (ms)")
-	triggerChars := flag.String("trigger-chars", getEnvOrDefault("TRIGGER_CHARACTERS", "{||(|| "), "Completion trigger characters (separated by ||)")
+	triggerChars := flag.String("trigger-chars", getEnvOrDefault("TRIGGER_CHARACTERS", "{||(|| ||."), "Completion trigger characters (separated by ||)")
 	numSuggestions := flag.Int("num-suggestions", getEnvOrDefaultInt("NUM_SUGGESTIONS", cfg.NumSuggestions), "Number of suggestions")
 	logFile := flag.String("log-file", getEnvOrDefault("LOG_FILE", "~/.cache/helix-assist.log"), "Log file path")
 	fetchTimeout := flag.Int("fetch-timeout", getEnvOrDefaultInt("FETCH_TIMEOUT", cfg.FetchTimeout), "Fetch timeout (ms)")

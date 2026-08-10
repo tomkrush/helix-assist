@@ -114,7 +114,7 @@ language-servers = ["pylsp", "helix-assist"]
 | `ANTHROPIC_MODEL` | `claude-sonnet-4-5` | Anthropic model |
 | `ANTHROPIC_ENDPOINT` | `https://api.anthropic.com` | Anthropic API endpoint |
 | `DEBOUNCE` | `200` | Debounce delay in milliseconds |
-| `TRIGGER_CHARACTERS` | `{`\|\|`(`\|\|` ` | Completion triggers (separated by `\|\|`) |
+| `TRIGGER_CHARACTERS` | `{`\|\|`(`\|\|` `\|\|`.` | Completion triggers (separated by `\|\|`) |
 | `NUM_SUGGESTIONS` | `1` | Number of completion suggestions |
 | `LOG_FILE` | `~/.cache/helix-assist.log` | Log file path |
 | `FETCH_TIMEOUT` | `15000` | API request timeout (ms) |
