@@ -26,29 +26,33 @@ var reasoningModels = map[string]bool{
 }
 
 type OpenAIProvider struct {
-	apiKey    string
-	model     string
-	chatModel string
-	endpoint  string
-	timeout   time.Duration
-	logger    *lsp.Logger
+	apiKey              string
+	model               string
+	chatModel           string
+	endpoint            string
+	timeout             time.Duration
+	logger              *lsp.Logger
+	reasoningEffort     string
+	completionMaxTokens int
 }
 
 func isReasoningModel(model string) bool {
 	return reasoningModels[model]
 }
 
-func NewOpenAIProvider(apiKey, model, chatModel, endpoint string, timeoutMs int, logger *lsp.Logger) *OpenAIProvider {
+func NewOpenAIProvider(apiKey, model, chatModel, endpoint, reasoningEffort string, completionMaxTokens, timeoutMs int, logger *lsp.Logger) *OpenAIProvider {
 	if chatModel == "" {
 		chatModel = model
 	}
 	return &OpenAIProvider{
-		apiKey:    apiKey,
-		model:     model,
-		chatModel: chatModel,
-		endpoint:  strings.TrimSuffix(endpoint, "/"),
-		timeout:   time.Duration(timeoutMs) * time.Millisecond,
-		logger:    logger,
+		apiKey:              apiKey,
+		model:               model,
+		chatModel:           chatModel,
+		endpoint:            strings.TrimSuffix(endpoint, "/"),
+		timeout:             time.Duration(timeoutMs) * time.Millisecond,
+		logger:              logger,
+		reasoningEffort:     reasoningEffort,
+		completionMaxTokens: completionMaxTokens,
 	}
 }
 
@@ -57,14 +61,15 @@ type reasoningConfig struct {
 }
 
 type responsesRequest struct {
-	Model        string                 `json:"model"`
-	Input        string                 `json:"input"`
-	Instructions string                 `json:"instructions,omitempty"`
-	Store        bool                   `json:"store"`
-	ServiceTier  string                 `json:"service_tier,omitempty"`
-	MaxToolCalls int                    `json:"max_tool_calls,omitempty"`
-	Metadata     map[string]interface{} `json:"metadata,omitempty"`
-	Reasoning    *reasoningConfig       `json:"reasoning,omitempty"`
+	Model           string                 `json:"model"`
+	Input           string                 `json:"input"`
+	Instructions    string                 `json:"instructions,omitempty"`
+	Store           bool                   `json:"store"`
+	ServiceTier     string                 `json:"service_tier,omitempty"`
+	MaxToolCalls    int                    `json:"max_tool_calls,omitempty"`
+	Metadata        map[string]interface{} `json:"metadata,omitempty"`
+	Reasoning       *reasoningConfig       `json:"reasoning,omitempty"`
+	MaxOutputTokens int                    `json:"max_output_tokens,omitempty"`
 }
 
 type responsesResponse struct {
@@ -86,19 +91,22 @@ func (p *OpenAIProvider) Completion(ctx context.Context, req CompletionRequest, 
 
 	for i := 0; i < numSuggestions; i++ {
 		respReq := responsesRequest{
-			Model:        p.model,
-			Instructions: instructions,
-			Input:        userPrompt,
-			Store:        false,
-			ServiceTier:  "priority",
-			MaxToolCalls: 0,
+			Model:           p.model,
+			Instructions:    instructions,
+			Input:           userPrompt,
+			Store:           false,
+			ServiceTier:     "priority",
+			MaxToolCalls:    0,
+			MaxOutputTokens: p.completionMaxTokens,
 			Metadata: map[string]interface{}{
 				"language": languageID,
 				"filepath": filepath,
 			},
 		}
 
-		if isReasoningModel(p.model) {
+		if p.reasoningEffort != "" {
+			respReq.Reasoning = &reasoningConfig{Effort: p.reasoningEffort}
+		} else if isReasoningModel(p.model) {
 			respReq.Reasoning = &reasoningConfig{
 				Effort: "minimal",
 			}

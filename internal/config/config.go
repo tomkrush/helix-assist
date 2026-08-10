@@ -13,6 +13,8 @@ type Config struct {
 	OpenAIModel            string
 	OpenAIModelForChat     string
 	OpenAIEndpoint         string
+	OpenAIReasoningEffort  string
+	OpenAICompletionTokens int
 	AnthropicKey           string
 	AnthropicModel         string
 	AnthropicModelForChat  string
@@ -35,6 +37,7 @@ func DefaultConfig() *Config {
 		OpenAIModel:            "gpt-4.1",
 		OpenAIModelForChat:     "gpt-5",
 		OpenAIEndpoint:         "https://api.openai.com/v1",
+		OpenAICompletionTokens: 128,
 		AnthropicModel:         "claude-haiku-4-5",
 		AnthropicModelForChat:  "claude-sonnet-4-5",
 		AnthropicEndpoint:      "https://api.anthropic.com",
@@ -58,6 +61,8 @@ func Load() *Config {
 	openaiKey := flag.String("openai-key", getEnvOrDefault("OPENAI_API_KEY", ""), "OpenAI API key")
 	openaiModel := flag.String("openai-model", getEnvOrDefault("OPENAI_MODEL", cfg.OpenAIModel), "OpenAI model")
 	openaiEndpoint := flag.String("openai-endpoint", getEnvOrDefault("OPENAI_ENDPOINT", cfg.OpenAIEndpoint), "OpenAI API endpoint")
+	openaiReasoningEffort := flag.String("openai-reasoning-effort", getEnvOrDefault("OPENAI_REASONING_EFFORT", cfg.OpenAIReasoningEffort), "Reasoning effort for OpenAI completions (for example: none, minimal, low)")
+	openaiCompletionTokens := flag.Int("openai-completion-max-tokens", getEnvOrDefaultInt("OPENAI_COMPLETION_MAX_TOKENS", cfg.OpenAICompletionTokens), "Maximum output tokens for OpenAI completions")
 	anthropicKey := flag.String("anthropic-key", getEnvOrDefault("ANTHROPIC_API_KEY", ""), "Anthropic API key")
 	anthropicModel := flag.String("anthropic-model", getEnvOrDefault("ANTHROPIC_MODEL", cfg.AnthropicModel), "Anthropic model")
 	anthropicEndpoint := flag.String("anthropic-endpoint", getEnvOrDefault("ANTHROPIC_ENDPOINT", cfg.AnthropicEndpoint), "Anthropic API endpoint")
@@ -81,6 +86,8 @@ func Load() *Config {
 	cfg.OpenAIModel = *openaiModel
 	cfg.OpenAIModelForChat = *openaiModelForChat
 	cfg.OpenAIEndpoint = *openaiEndpoint
+	cfg.OpenAIReasoningEffort = *openaiReasoningEffort
+	cfg.OpenAICompletionTokens = *openaiCompletionTokens
 	cfg.AnthropicKey = *anthropicKey
 	cfg.AnthropicModel = *anthropicModel
 	cfg.AnthropicModelForChat = *anthropicModelForChat

@@ -34,6 +34,8 @@ func main() {
 			cfg.OpenAIModel,
 			cfg.OpenAIModelForChat,
 			cfg.OpenAIEndpoint,
+			cfg.OpenAIReasoningEffort,
+			cfg.OpenAICompletionTokens,
 			cfg.FetchTimeout,
 			logger,
 		)

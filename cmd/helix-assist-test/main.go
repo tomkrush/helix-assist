@@ -64,6 +64,8 @@ func main() {
 			*openaiModel,
 			*openaiModel,
 			*openaiEndpoint,
+			"",
+			128,
 			*timeoutMs,
 			logger,
 		)

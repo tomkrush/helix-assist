@@ -108,6 +108,8 @@ language-servers = ["pylsp", "helix-assist"]
 | `OPENAI_API_KEY` | - | OpenAI API key |
 | `OPENAI_MODEL` | `gpt-4.1-mini` | OpenAI model for completions |
 | `OPENAI_ENDPOINT` | `https://api.openai.com/v1` | OpenAI API endpoint |
+| `OPENAI_REASONING_EFFORT` | - | Reasoning effort for completions; use `none` for low-latency LM Studio completions |
+| `OPENAI_COMPLETION_MAX_TOKENS` | `128` | Maximum output tokens for a completion |
 | `ANTHROPIC_API_KEY` | - | Anthropic API key |
 | `ANTHROPIC_MODEL` | `claude-sonnet-4-5` | Anthropic model |
 | `ANTHROPIC_ENDPOINT` | `https://api.anthropic.com` | Anthropic API endpoint |
@@ -127,4 +129,3 @@ Monitor helix-assist activity by tailing the log files:
 tail -f ~/.cache/helix-assist.log
 tail -f ~/.cache/helix/helix.log
 ```
-
