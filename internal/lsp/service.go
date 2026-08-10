@@ -169,7 +169,10 @@ func (s *Service) registerDefaultHandlers() {
 			svc.Send(&JSONRPCMessage{
 				JSONRPC: "2.0",
 				ID:      msg.ID,
-				Result:  nil,
+				// A JSON-RPC response must contain either result or error. A nil
+				// interface is omitted by JSONRPCMessage's `omitempty` tag, while
+				// RawMessage preserves the required explicit null value.
+				Result: json.RawMessage("null"),
 			})
 		}
 	})
